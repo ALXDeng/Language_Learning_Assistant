@@ -13,7 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.langassistant",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app uses the microphone to record audio messages."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -29,6 +33,14 @@
     "plugins": ["expo-router"],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "ca78265b-707d-4977-acc3-2bde067b1aa6"
+      }
     }
   }
 }
