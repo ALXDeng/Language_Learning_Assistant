@@ -8,13 +8,16 @@ const User = require("../models/userModel");
 const mongoose = require("mongoose");
 
 const secretKey = process.env.OPENAI_API_KEY;
+
 const openai = new OpenAI({
   apiKey: secretKey,
 });
 
 const getChats = async (req, res) => {
+  console.log("getting chats");
   const user_id = req.user._id;
   const chats = await Chat.find({ user_id }).sort({ createdAt: -1 });
+  console.log("Chats:", chats);
   res.status(200).json(chats);
 };
 
@@ -45,6 +48,8 @@ const createChat = async (req, res) => {
 
     //retrieve the user id
     const user_id = req.user._id;
+    console.log("user id:", user_id);
+    console.log("user obj:", req.user);
 
     //creating a chat in the database
     const chat = await Chat.create({

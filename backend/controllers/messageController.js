@@ -14,16 +14,20 @@ const openai = new OpenAI({
 });
 
 async function pollRunStatus(threadId, runId) {
-  const maxAttempts = 70;
-  const pollingInterval = 1000; // 2 seconds
+  const maxAttempts = 15;
+  const pollingInterval = 1000;
   let attempts = 0;
+  console.log("polling run status");
 
   while (attempts < maxAttempts) {
+    console.log("Attempts: ", attempts);
+
     try {
       const runStatus = await openai.beta.threads.runs.retrieve(
         threadId,
         runId
       );
+      console.log("Run Status: ", runStatus.status);
       // console.log(runStatus.status)
       if (runStatus.status === "completed") {
         // console.log(attempts);
@@ -43,11 +47,13 @@ async function pollRunStatus(threadId, runId) {
     await new Promise((resolve) => setTimeout(resolve, pollingInterval));
     attempts++;
   }
+
   const runStatus = await openai.beta.threads.runs.retrieve(threadId, runId);
   throw new Error("Max polling attempts reached");
 }
 async function executeThread(threadId, role, content, assistantId) {
   try {
+    console.log("Executing Thread: ", threadId);
     // Create a message in the thread
     await openai.beta.threads.messages.create(threadId, {
       role: role,
@@ -58,7 +64,7 @@ async function executeThread(threadId, role, content, assistantId) {
     const run = await openai.beta.threads.runs.create(threadId, {
       assistant_id: assistantId,
     });
-
+    console.log("About to poll for run status");
     // Poll for the run status
     const runStatus = await pollRunStatus(threadId, run.id, assistantId);
     console.log("Run completed successfully");
@@ -93,11 +99,13 @@ async function transcribeAudioWithWhisper(audioFilePath) {
       console.error("Error during transcription:", error);
       fileStream.close(); // Ensure the stream is properly closed after an error
 
-      if (error.cause && error.cause.code === 'ECONNRESET') {
+      if (error.cause && error.cause.code === "ECONNRESET") {
         attempts++;
         console.error(`Retry ${attempts}/${maxRetries} due to network error.`);
         if (attempts >= maxRetries) {
-          throw new Error("Transcription failed after maximum retries due to network issues.");
+          throw new Error(
+            "Transcription failed after maximum retries due to network issues."
+          );
         }
       } else {
         throw error; // For other types of errors, rethrow immediately
@@ -108,22 +116,42 @@ async function transcribeAudioWithWhisper(audioFilePath) {
 
 //combined function for uploading a message and getting a response
 const createMessageandResponse = async (req, res) => {
+  console.log("Creating Message and Response");
   const { role, content, chat_id } = req.body;
   const user_id = req.user._id;
   const chat = await Chat.findById(chat_id);
   if (!chat) {
+    console.error("Chat not found");
     return res.status(404).json({ error: "Chat not found" });
   }
 
+  // try {
+  //   // Create a message document from this message
+  //   const message = await Message.create({
+  //     role: role,
+  //     content: content,
+  //   });
+  //   if (!message) {
+  //     return res.status(400).json({ error: "Message Creation Failed" });
+  //   }
+  //   chat.messages.push(message);
+  //   await chat.save();
+  //   res.status(200).json({ message });
+  // } catch (error) {
+  //   console.error("Error during User Message creation", error);
+  //   res.status(400).json({ error: error.message });
+  // }
+
   thread_id = chat.thread_id;
   assistant_id = chat.assistant_id;
-
+  console.log("about to execute thread");
   //adding a message to the thread
   try {
     executeThread(thread_id, role, content, assistant_id)
       .then(async ({ runStatus, run_id }) => {
         // get the latest message from the thread
         const messages = await openai.beta.threads.messages.list(thread_id);
+        console.log("Messages: ", messages);
 
         let lastMessage = messages.data
           .filter(
@@ -140,18 +168,28 @@ const createMessageandResponse = async (req, res) => {
         // Create a message document from this message
         const message = await Message.create({ role, content });
         if (!message) {
-          return res.status(400).json({ error: "Something went wrong" });
+          return res
+            .status(400)
+            .json({ error: "User Message Creation Failed" });
         }
-        message_assistant = await Message.create({
+
+        const message_assistant = await Message.create({
           role: "assistant",
           content: lastMessage,
         });
 
-        // Add the messages to the chat
+        if (!message_assistant) {
+          return res
+            .status(400)
+            .json({ error: "Assistant Message Creation Failed" });
+        }
+
+        console.log("Message Assistant: ", message_assistant);
+
+        // // Add the messages to the chat
         chat.messages.push(message);
         chat.messages.push(message_assistant);
         await chat.save();
-        //return the entire chat back to the frontend
         res.status(200).json({ latest_message: message_assistant });
       })
       .catch((error) => {
@@ -275,7 +313,7 @@ const createResponse = async (req, res) => {
         res.status(200).json({ latest_message: message_assistant });
       })
       .catch((error) => {
-        console.log("we run into an error here")
+        console.log("we run into an error here");
         console.error(`An error occurred: ${error.message}`);
         res.status(400).json({ error: error.message });
       });
@@ -350,9 +388,15 @@ const createAndTranscribe = async (req, res) => {
 };
 
 const transcribeOnly = async (req, res) => {
+  // console.log(req);
+  if (!req.file) {
+    console.log("No file uploaded");
+    return res.status(400).json({ error: "No file uploaded" });
+  }
   const user_id = req.user._id;
+  // console.log(req.file);
   const audioFile = req.file.path;
-
+  // console.log(req.file.path);
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
